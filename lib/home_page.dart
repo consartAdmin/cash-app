@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'api_service.dart';
 import 'categories_page.dart';
 import 'dashboard_page.dart';
+import 'debt_form_page.dart';
+import 'debts_page.dart';
 import 'login_page.dart';
 import 'movement_form_page.dart';
 import 'movements_page.dart';
@@ -23,7 +25,7 @@ class _HomePageState extends State<HomePage> {
         _opened.add(i);
       });
 
-  static const _titles = ['Caixa', 'Movimentos', 'Categorias'];
+  static const _titles = ['Caixa', 'Movimentos', 'Dívidas', 'Categorias'];
 
   Future<void> _logout() async {
     await ApiService.instance.logout();
@@ -36,7 +38,8 @@ class _HomePageState extends State<HomePage> {
   void _newEntry() {
     Navigator.of(context).push(MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => const MovementFormPage(),
+      builder: (_) =>
+          _tab == 2 ? const DebtFormPage() : const MovementFormPage(),
     ));
   }
 
@@ -67,15 +70,16 @@ class _HomePageState extends State<HomePage> {
         children: [
           DashboardPage(onSeeAll: () => _open(1)),
           _opened.contains(1) ? const MovementsPage() : const SizedBox(),
-          _opened.contains(2) ? const CategoriesPage() : const SizedBox(),
+          _opened.contains(2) ? const DebtsPage() : const SizedBox(),
+          _opened.contains(3) ? const CategoriesPage() : const SizedBox(),
         ],
       ),
-      floatingActionButton: _tab == 2
+      floatingActionButton: _tab == 3
           ? null
           : FloatingActionButton.extended(
               onPressed: _newEntry,
               icon: const Icon(Icons.add),
-              label: const Text('Lançar'),
+              label: Text(_tab == 2 ? 'Nova dívida' : 'Lançar'),
             ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
@@ -85,6 +89,8 @@ class _HomePageState extends State<HomePage> {
               icon: Icon(Icons.home_outlined), label: 'Início'),
           NavigationDestination(
               icon: Icon(Icons.receipt_long_outlined), label: 'Movimentos'),
+          NavigationDestination(
+              icon: Icon(Icons.request_quote_outlined), label: 'Dívidas'),
           NavigationDestination(
               icon: Icon(Icons.pie_chart_outline), label: 'Categorias'),
         ],
