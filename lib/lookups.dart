@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'api_service.dart';
+import 'debts_models.dart';
 import 'models.dart';
 
 /// Contas, categorias e tipos de documento (carregados uma vez).
@@ -12,6 +13,7 @@ class Lookups {
   List<CashCategory> categories = const [];
   List<Subcategory> subcategories = const [];
   List<String> documentTypes = const [];
+  List<DebtType> debtTypes = const [];
   Future<void>? _loading;
 
   Future<void> load({bool force = false}) {
@@ -29,11 +31,13 @@ class Lookups {
       api.categories(),
       api.subcategories(),
       api.documentTypes().catchError((_) => <String>[]),
+      api.debtTypes().catchError((_) => <DebtType>[]),
     ]);
     accounts = r[0] as List<Account>;
     categories = r[1] as List<CashCategory>;
     subcategories = r[2] as List<Subcategory>;
     documentTypes = r[3] as List<String>;
+    debtTypes = r[4] as List<DebtType>;
   }
 
   List<Subcategory> subsOf(int categoryId) =>
@@ -59,6 +63,21 @@ class Lookups {
           (name.isNotEmpty && s.name.toUpperCase() == name.toUpperCase())) {
         return s;
       }
+    }
+    return null;
+  }
+
+  /// Nome do tipo de dívida (a dívida guarda o código).
+  String debtTypeName(String code) {
+    for (final t in debtTypes) {
+      if (t.code == code) return t.name;
+    }
+    return code;
+  }
+
+  Account? findAccountById(int? id) {
+    for (final a in accounts) {
+      if (a.id == id) return a;
     }
     return null;
   }

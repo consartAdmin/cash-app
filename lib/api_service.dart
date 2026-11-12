@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'debts_models.dart';
 import 'models.dart';
 
 class ApiException implements Exception {
@@ -367,6 +368,117 @@ class ApiService {
   /// Relatório PDF do Caixa com os filtros (o ERP gera o arquivo).
   Uri reportUrl(MoveFilter f) =>
       _uri('/api/caixa/relatorio/pdf', _filterQuery(f));
+
+  // ── Dívidas (/api/debts, mesma tela Dívidas do ERP) ──────────────────
+
+  /// GET /api/debts — todas as páginas (até [maxRows]).
+  Future<List<Debt>> debts(
+      {String? search, DebtStatus? status, bool onlyOpen = false,
+      int maxRows = 2000}) async {
+    const limit = 200;
+    final rows = <Map<String, dynamic>>[];
+    for (var page = 1; page <= (maxRows / limit).ceil(); page++) {
+      final json = await _send('GET', '/api/debts',
+          query: _clean({
+            'q': search,
+            'status': status == null ? null : debtStatusQuery(status),
+            'only_open': onlyOpen ? 'true' : null,
+            'page': '$page',
+            'limit': '$limit',
+          }));
+      final chunk = _rows(json);
+      rows.addAll(chunk);
+      final total = json is Map ? toInt(json['total']) : chunk.length;
+      if (chunk.length < limit || rows.length >= total) break;
+    }
+    return rows.map(Debt.fromJson).toList();
+  }
+
+  Future<DebtsSummary> debtsSummary() async {
+    final json = _map(await _send('GET', '/api/debts/summary'));
+    return DebtsSummary.fromJson(_map(json['summary']));
+  }
+
+  Future<Debt> debt(int id) async {
+    final json = _map(await _send('GET', '/api/debts/$id'));
+    return Debt.fromJson(_map(json['row'] ?? json));
+  }
+
+  Future<List<DebtPayment>> debtPayments(int debtId) async {
+    final json = await _send('GET', '/api/debts/$debtId/payments');
+    return _rows(json).map(DebtPayment.fromJson).toList();
+  }
+
+  Future<List<InstallmentPlan>> installmentPlans(int debtId) async {
+    final json = await _send('GET', '/api/debts/$debtId/installment-plans');
+    return _rows(json).map(InstallmentPlan.fromJson).toList();
+  }
+
+  Future<void> saveInstallmentPlans(
+      int debtId, List<InstallmentPlan> plans) async {
+    await _send('POST', '/api/debts/$debtId/installment-plans',
+        body: {'rows': plans.map((p) => p.toJson()).toList()});
+  }
+
+  Future<List<DebtType>> debtTypes() async {
+    final json =
+        await _send('GET', '/api/debts-types', query: {'active': 'true'});
+    return _rows(json)
+        .map(DebtType.fromJson)
+        .where((t) => t.code.isNotEmpty)
+        .toList();
+  }
+
+  /// Cria ([id] null) ou altera uma dívida. Devolve o id.
+  Future<int> saveDebt(Map<String, dynamic> body, {int? id}) async {
+    final json = _map(await _send(
+      id == null ? 'POST' : 'PUT',
+      id == null ? '/api/debts' : '/api/debts/$id',
+      body: body,
+    ));
+    final newId = toInt(_map(json['row'])['id']);
+    return newId > 0 ? newId : (id ?? 0);
+  }
+
+  Future<void> deleteDebt(int id) async {
+    await _send('DELETE', '/api/debts/$id');
+  }
+
+  /// Conta/categoria sugeridas para a saída no Caixa (último pagamento da
+  /// dívida ou última saída do mesmo credor).
+  Future<PaymentCash> debtCashDefaults(int debtId) async {
+    final json =
+        _map(await _send('GET', '/api/debts/$debtId/payments/cash-defaults'));
+    return PaymentCash.fromJson(_map(json['data']));
+  }
+
+  /// POST /api/debts/:id/payments — o ERP já lança a SAÍDA no Caixa.
+  /// Devolve o id da movimentação criada (para anexar o comprovante).
+  Future<int> createDebtPayment(int debtId, Map<String, dynamic> body) async {
+    final json =
+        _map(await _send('POST', '/api/debts/$debtId/payments', body: body));
+    return toInt(json['cash_movement_id'] ??
+        _map(json['payment'])['cash_movement_id']);
+  }
+
+  Future<PaymentCash> debtPaymentCash(int paymentId) async {
+    final json = _map(await _send('GET', '/api/debt-payments/$paymentId/cash'));
+    return PaymentCash.fromJson(_map(json['data']));
+  }
+
+  /// PUT /api/debt-payments/:id — atualiza também a saída no Caixa.
+  Future<int> updateDebtPayment(
+      int paymentId, Map<String, dynamic> body) async {
+    final json =
+        _map(await _send('PUT', '/api/debt-payments/$paymentId', body: body));
+    return toInt(json['cash_movement_id'] ??
+        _map(json['payment'])['cash_movement_id']);
+  }
+
+  /// Exclui o pagamento (e a saída do Caixa ligada a ele).
+  Future<void> deleteDebtPayment(int paymentId) async {
+    await _send('DELETE', '/api/debt-payments/$paymentId');
+  }
 }
 
 /// Filtros da lista (mesmos nomes da API do Caixa).
